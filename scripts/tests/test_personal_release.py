@@ -1,0 +1,103 @@
+from pathlib import Path
+import json
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from personal_release import check_build_number, draft, sign_app, signing_identity
+from release_support import digest, REPOSITORY
+
+
+class PersonalReleaseTests(unittest.TestCase):
+    def test_build_numbers_advance_across_channels(self):
+        with patch("personal_release.published_releases", return_value=[{"tag_name": "personal-2"}, {"tag_name": "personal-5"}]):
+            for build in (1, 2, 4, 5):
+                with self.assertRaisesRegex(ValueError, "exceed 5"):
+                    check_build_number(build)
+            check_build_number(6)
+
+    def test_first_release_must_exceed_development_build(self):
+        with patch("personal_release.published_releases", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "exceed 1"):
+                check_build_number(1)
+            check_build_number(2)
+
+    def test_unexpected_personal_tag_stops_packaging(self):
+        with patch("personal_release.published_releases", return_value=[{"tag_name": "personal-latest"}]):
+            with self.assertRaisesRegex(ValueError, "Unexpected"):
+                check_build_number(2)
+
+    def manifest(self, output):
+        paths = ["payload/HighDock-2.zip", "appcast.xml", "notes.md"]
+        for name in paths:
+            path = output / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(name)
+        manifest = {"repository": REPOSITORY, "build": 2, "version": "0.1.0", "beta": False,
+                    "commit": "a" * 40, "sha256": {name: digest(output / name) for name in paths}}
+        (output / "release.json").write_text(json.dumps(manifest))
+        return manifest
+
+    def test_changed_artifact_is_not_uploaded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            self.manifest(output)
+            (output / "appcast.xml").write_text("changed")
+            with patch("personal_release.run") as command:
+                with self.assertRaisesRegex(ValueError, "changed after packaging"):
+                    draft(SimpleNamespace(directory=output))
+                command.assert_not_called()
+
+    def test_missing_hash_and_other_repository_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            for change in ("repository", "sha256"):
+                manifest = self.manifest(output)
+                if change == "repository":
+                    manifest[change] = "other/repo"
+                else:
+                    del manifest[change]["appcast.xml"]
+                (output / "release.json").write_text(json.dumps(manifest))
+                with patch("personal_release.run") as command:
+                    with self.assertRaisesRegex(ValueError, "manifest"):
+                        draft(SimpleNamespace(directory=output))
+                    command.assert_not_called()
+
+    def test_upload_is_always_a_draft_at_exact_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            manifest = self.manifest(output)
+            with patch("personal_release.check_build_number"), patch("personal_release.run") as command:
+                draft(SimpleNamespace(directory=output))
+            arguments = command.call_args.args
+            self.assertIn("--draft", arguments)
+            self.assertEqual(arguments[arguments.index("--target") + 1], manifest["commit"])
+            self.assertNotIn("--prerelease", arguments)
+
+    def test_nested_helpers_are_signed_before_framework_and_app(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "HighDock.app"
+            framework = app / "Contents/Frameworks/Sparkle.framework"
+            services = framework / "Versions/B/XPCServices"
+            services.mkdir(parents=True)
+            (services / "Installer.xpc").mkdir()
+            with patch("personal_release.run") as command:
+                sign_app(app, "identity")
+            calls = [call.args for call in command.call_args_list]
+            signed = [call[-1] for call in calls if "--sign" in call]
+            self.assertEqual(signed[-2:], [str(framework), str(app)])
+            self.assertTrue(any(path.endswith("Installer.xpc") for path in signed[:-2]))
+            self.assertTrue(all("--timestamp" in call and "runtime" in call for call in calls if "--sign" in call))
+
+    def test_signing_identity_must_match_team(self):
+        for identities in ("0 valid identities", '1) ' + 'A' * 40 + ' "Developer ID Application: Someone (OTHERTEAM)"'):
+            with patch("personal_release.run", return_value=identities):
+                with self.assertRaisesRegex(ValueError, "Expected one"):
+                    signing_identity()
+
+
+if __name__ == "__main__":
+    unittest.main()

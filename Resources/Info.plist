@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>local.highdock.app</string>
+	<key>CFBundleName</key>
+	<string>HighDock</string>
+	<key>CFBundleDisplayName</key>
+	<string>HighDock</string>
+	<key>CFBundleExecutable</key>
+	<string>HighDock</string>
+	<key>CFBundleIconFile</key>
+	<string>HighDock</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>HighDockUpdatesEnabled</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://rhymeswithjazz.github.io/HighDock/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>P656bwHLhLV3J6L/1/MmqT2cODGnCAhI8WLApXEDxzA=</string>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUSendProfileInfo</key>
+	<false/>
+</dict>
+</plist>
