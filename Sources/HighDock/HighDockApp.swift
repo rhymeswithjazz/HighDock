@@ -24,8 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: host)
             window.title = "HighDock"
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-            window.setContentSize(NSSize(width: 860, height: 620))
-            window.contentMinSize = NSSize(width: 740, height: 540)
+            window.setContentSize(NSSize(width: 860, height: 700))
+            window.contentMinSize = NSSize(width: 740, height: 680)
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
             window.setFrameAutosaveName("HighDockMain")

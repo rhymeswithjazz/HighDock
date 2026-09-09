@@ -9,129 +9,171 @@ struct MainView: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 18) {
-                Label("HighDock", systemImage: "dock.rectangle")
-                    .font(.title2.weight(.semibold))
-                    .padding(.horizontal, 16).padding(.top, 24)
-                List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
-                    if model.activeSetup == nil {
-                        Section("Connected now") {
-                            Label("Unsaved setup", systemImage: "display.badge.checkmark")
-                                .tag(Optional<UUID>.none)
-                        }
-                    }
-                    Section("Saved setups") {
-                        ForEach(model.setups) { setup in
-                            HStack(spacing: 10) {
-                                Image(systemName: setup.layout.displays.count > 1 ? "display.2" : "display")
-                                    .foregroundStyle(.secondary)
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(setup.name).lineLimit(1)
-                                    if setup.id == model.activeSetup?.id {
-                                        Text("Connected").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }.padding(.vertical, 4).tag(Optional(setup.id))
-                        }
-                    }
-                }.listStyle(.sidebar)
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(model.paused ? "Switching paused" : "Automatic switching", systemImage: model.paused ? "pause.circle" : "bolt.circle")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Launch at login", isOn: Binding(get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
-                        .toggleStyle(.checkbox).font(.caption)
-                    if model.loginNeedsApproval {
-                        Button("Allow in System Settings") { SMAppService.openSystemSettingsLoginItems() }
-                            .font(.caption)
-                    }
-                }.padding(16)
-            }.navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 280)
+            sidebar
+                .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
         } detail: {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(model.selectedSetup?.name ?? "Make yourself at home.")
-                                .font(.system(size: 27, weight: .semibold, design: .rounded))
-                            Text(model.editingCurrent ? "Your Dock, right where you like it." : "Ready for the next time you connect.")
-                                .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                Form {
+                    Section {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(model.selectedSetup?.name ?? "New Setup")
+                                    .font(.title2.weight(.semibold))
+                                    .lineLimit(2)
+                                Spacer()
+                                Label(model.editingCurrent ? "Connected" : "Not connected",
+                                      systemImage: model.editingCurrent ? "checkmark.circle.fill" : "display")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize()
+                            }
+                            MonitorPreview(layout: model.displayedLayout, settings: model.draftSettings)
+                                .frame(height: 170)
+                                .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.draftSettings)
                         }
-                        Spacer()
-                        Text(model.editingCurrent ? "CONNECTED" : "SAVED")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .tracking(1)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(model.editingCurrent ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.1), in: Capsule())
+                        .padding(.vertical, 4)
                     }
-                    MonitorPreview(layout: model.displayedLayout, settings: model.draftSettings)
-                        .frame(height: 210)
-                        .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.draftSettings)
-                    VStack(alignment: .leading, spacing: 18) {
+
+                    Section {
                         TextField("Setup name", text: $model.draftName)
                             .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Setup name")
-                        HStack {
-                            Text("Dock position").fontWeight(.medium)
-                            Spacer()
-                            Picker("Dock position", selection: $model.draftSettings.edge) {
-                                ForEach(DockEdge.allCases, id: \.self) { edge in
-                                    Text(edge.rawValue.capitalized).tag(edge)
-                                }
-                            }.pickerStyle(.segmented).frame(maxWidth: 260).labelsHidden()
+                        Picker("Dock position", selection: $model.draftSettings.edge) {
+                            ForEach(DockEdge.allCases, id: \.self) { edge in
+                                Text(edge.rawValue.capitalized).tag(edge)
+                            }
                         }
-                        Divider()
+                        .pickerStyle(.segmented)
                         Toggle(isOn: $model.draftSettings.autoHide) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Automatically hide Dock").fontWeight(.medium)
-                                Text("Show it when your pointer reaches the edge.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                        }.toggleStyle(.switch)
-                            .accessibilityLabel("Automatically hide Dock")
-                            .accessibilityHint("Show the Dock when your pointer reaches the edge.")
+                            Text("Automatically hide and show the Dock")
+                            Text("Show the Dock when the pointer reaches its edge.")
+                        }
+                        .toggleStyle(.switch)
+                    } header: {
+                        Text("Dock Settings")
+                    } footer: {
+                        Text(model.editingCurrent
+                             ? "Save to apply these settings whenever this display layout connects. Dock size stays unchanged."
+                             : "These settings apply the next time this display layout connects. Dock size stays unchanged.")
                     }
+
+                    Section("General") {
+                        Toggle("Launch at login", isOn: Binding(
+                            get: { model.launchAtLogin }, set: { model.setLaunchAtLogin($0) }))
+                            .toggleStyle(.switch)
+                        if model.loginNeedsApproval {
+                            LabeledContent("Login permission required") {
+                                Button("Open System Settings…") { SMAppService.openSystemSettingsLoginItems() }
+                            }
+                        }
+                    }
+
                     if model.displayedLayout.signature == nil {
-                        Label("We could not identify this display layout. Reconnect your displays to try again.", systemImage: "display.trianglebadge.exclamationmark")
-                            .font(.callout).foregroundStyle(.secondary)
+                        Section {
+                            Label("Could not identify this display layout. Reconnect your displays to try again.",
+                                  systemImage: "display.trianglebadge.exclamationmark")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     if let error = model.error {
-                        HStack(alignment: .top) {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                            Text(error).font(.callout).textSelection(.enabled)
-                            Spacer()
-                            Button("Retry") { model.retry() }.disabled(model.applying)
-                        }.padding(12).background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    HStack {
-                        if model.selectedSetup != nil {
-                            Button(role: .destructive) { confirmDelete = true } label: {
-                                Image(systemName: "trash")
-                            }.help("Delete setup").accessibilityLabel("Delete setup")
-                                .disabled(model.applying || !model.storageAvailable)
+                        Section {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                                Text(error).textSelection(.enabled)
+                                Spacer(minLength: 0)
+                                Button("Retry") { model.retry() }.disabled(model.applying)
+                            }
                         }
-                        Spacer()
-                        if model.applying { ProgressView().controlSize(.small) }
-                        else if !model.status.isEmpty { Text(model.status).font(.caption).foregroundStyle(.secondary) }
-                        Button(model.editingCurrent ? "Save and Apply" : "Save Setup") { model.save() }
-                            .buttonStyle(.borderedProminent).controlSize(.large)
-                            .keyboardShortcut(.return, modifiers: .command)
-                            .disabled(!model.canSave)
                     }
-                    Text("Resize your Dock as usual. HighDock only remembers its edge and hiding setting.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }.padding(30)
-            }.background(.background)
+                }
+                .formStyle(.grouped)
+                .scrollIndicators(.hidden)
+                actionBar
+            }
+            .background(Color(nsColor: .windowBackgroundColor))
+            .navigationTitle("HighDock")
         }
         .toolbar {
             ToolbarItem {
-                Button(model.paused ? "Resume" : "Pause", systemImage: model.paused ? "play" : "pause") { model.togglePause() }
+                Button(model.paused ? "Resume Switching" : "Pause Switching",
+                       systemImage: model.paused ? "play" : "pause") { model.togglePause() }
                     .help(model.paused ? "Resume automatic switching" : "Pause automatic switching")
             }
         }
-        .confirmationDialog("Delete this setup?", isPresented: $confirmDelete) {
+        .confirmationDialog("Delete \(model.selectedSetup?.name ?? "this setup")?", isPresented: $confirmDelete) {
             Button("Delete Setup", role: .destructive) { model.deleteSelected() }
-        } message: { Text("The Dock will stay as it is.") }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refreshLoginStatus() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("HighDock will forget this setup’s settings. The Dock will stay as it is.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.refreshLoginStatus()
+        }
+    }
+
+    private var sidebar: some View {
+        List(selection: Binding(get: { model.selectedID }, set: { model.select($0) })) {
+            if model.activeSetup == nil {
+                Section("Connected Now") {
+                    Label("Unsaved setup", systemImage: "display")
+                        .padding(.vertical, 4)
+                        .tag(Optional<UUID>.none)
+                }
+            }
+            Section("Saved Setups") {
+                ForEach(model.setups) { setup in
+                    HStack(spacing: 10) {
+                        Image(systemName: setup.layout.displays.count > 1 ? "display.2" : "display")
+                            .font(.title3)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(setup.name).lineLimit(1)
+                            Text(setup.id == model.activeSetup?.id ? "Connected" : displayCount(setup.layout))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 5)
+                    .tag(Optional(setup.id))
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Divider()
+                Label(model.paused ? "Automatic switching paused" : "Automatic switching on",
+                      systemImage: model.paused ? "pause.circle" : "arrow.triangle.2.circlepath")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+            }
+        }
+    }
+
+    private var actionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: 12) {
+                if model.selectedSetup != nil {
+                    Button("Delete Setup…", role: .destructive) { confirmDelete = true }
+                        .disabled(model.applying || !model.storageAvailable)
+                }
+                Spacer(minLength: 0)
+                if model.applying {
+                    ProgressView().controlSize(.small)
+                        .accessibilityLabel("Applying Dock settings")
+                } else if !model.status.isEmpty {
+                    Text(model.status).font(.caption).foregroundStyle(.secondary)
+                }
+                Button(model.editingCurrent ? "Save and Apply" : "Save Setup") { model.save() }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!model.canSave)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 14)
+        }
+    }
+
+    private func displayCount(_ layout: DisplayLayout) -> String {
+        layout.displays.count == 1 ? "1 display" : "\(layout.displays.count) displays"
     }
 }
 
@@ -139,7 +181,6 @@ struct MonitorPreview: View {
     let layout: DisplayLayout
     let settings: DockSettings
     @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         GeometryReader { geometry in
             let displays = layout.displays.filter { $0.mirrorOf == nil }
@@ -149,13 +190,12 @@ struct MonitorPreview: View {
             let height = max(1, (displays.map { $0.y + $0.height }.max() ?? 1) - minY)
             let scale = min((geometry.size.width - 70) / width, (geometry.size.height - 60) / height)
             ZStack {
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(Color.accentColor.opacity(colorScheme == .dark ? 0.07 : 0.04))
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
                 ForEach(displays) { display in
                     ZStack {
                         RoundedRectangle(cornerRadius: 9)
-                            .fill(.linearGradient(colors: [.indigo.opacity(0.8), .cyan.opacity(0.65), .teal.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                        Ellipse().fill(.white.opacity(0.13)).rotationEffect(.degrees(-30)).padding(-25).blur(radius: 8)
+                            .fill(.linearGradient(colors: [.indigo.opacity(0.75), .blue.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
                         VStack {
                             HStack {
                                 Text(display.name).font(.system(size: 9, weight: .medium)).lineLimit(1)
@@ -172,7 +212,7 @@ struct MonitorPreview: View {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 9))
                     .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(contrast == .increased ? Color.primary : Color.black.opacity(0.65), lineWidth: 4))
-                    .shadow(color: .black.opacity(0.18), radius: 10, y: 7)
+                    .shadow(color: .black.opacity(0.12), radius: 4, y: 3)
                     .frame(width: max(15, display.width * scale), height: max(15, display.height * scale))
                     .position(x: (geometry.size.width - width * scale) / 2 + (display.x - minX + display.width / 2) * scale,
                               y: (geometry.size.height - height * scale) / 2 + (display.y - minY + display.height / 2) * scale)

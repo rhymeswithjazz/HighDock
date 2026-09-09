@@ -27,12 +27,17 @@ func renderAppearanceChecks() async throws {
     try store.save([Setup(name: "Studio", layout: layout, settings: DockSettings(edge: .left, autoHide: true))])
     let model = AppModel(store: store, dock: PreviewDock(), displayReader: { layout }, settleDuration: .milliseconds(1), preferences: UserDefaults(suiteName: "HighDockPreview")!, observeSystem: false)
     try await Task.sleep(for: .milliseconds(100))
-    for variant in ["light", "dark", "contrast"] {
+    for variant in ["light", "dark", "contrast", "compact"] {
+        let size = variant == "compact" ? NSSize(width: 740, height: 680) : NSSize(width: 860, height: 700)
+        if variant == "compact" {
+            model.setups[0].name = "Studio with a long display setup name"
+            model.draftName = model.setups[0].name
+        }
         let root = MainView(model: model)
             .environment(\.colorScheme, variant == "dark" ? .dark : .light)
-            .frame(width: 860, height: 620)
+            .frame(width: size.width, height: size.height)
         let host = NSHostingView(rootView: root)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 860, height: 620), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.appearance = NSAppearance(named: variant == "dark" ? .darkAqua : (variant == "contrast" ? .accessibilityHighContrastAqua : .aqua))
         window.contentView = host
         host.layoutSubtreeIfNeeded()
