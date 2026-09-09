@@ -153,6 +153,19 @@ def package(args):
     print(f"Ready for review: {output}\nCreate a draft with: python3 scripts/personal_release.py draft {output}")
 
 
+def verify_release_tag(build, commit):
+    tag = f"personal-{build}"
+    ref = f"refs/tags/{tag}"
+    output = run("git", "ls-remote", "--tags", f"git@github.com:{REPOSITORY}.git", ref, ref + "^{}", capture=True)
+    references = {name: sha for sha, name in (line.split() for line in output.splitlines())}
+    actual = references.get(ref + "^{}", references.get(ref))
+    if actual is None:
+        raise ValueError(f"Push the packaged commit's tag before creating the draft:\n"
+                         f"git tag {tag} {commit}\ngit push origin {ref}")
+    if actual != commit:
+        raise ValueError(f"Remote tag {tag} does not match the packaged commit; do not overwrite it")
+
+
 def draft(args):
     output = args.directory.resolve()
     manifest = json.loads((output / "release.json").read_text())
@@ -165,9 +178,9 @@ def draft(args):
         if not path.is_relative_to(output) or digest(path) != expected:
             raise ValueError(f"Release artifact changed after packaging: {name}")
     check_build_number(build)
-    run("gh", "api", f"repos/{REPOSITORY}/commits/{manifest['commit']}", capture=True)
+    verify_release_tag(build, manifest["commit"])
     command = ["gh", "release", "create", f"personal-{build}", "--repo", REPOSITORY,
-               "--draft", "--target", manifest["commit"],
+               "--draft", "--verify-tag",
                "--title", f"HighDock {manifest['version']} (build {build})", "--notes-file", str(output / "notes.md")]
     if manifest["beta"]:
         command += ["--prerelease"]

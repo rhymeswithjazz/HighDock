@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from personal_release import check_build_number, draft, sign_app, signing_identity
+from personal_release import check_build_number, draft, sign_app, signing_identity, verify_release_tag
 from release_support import digest, REPOSITORY
 
 
@@ -70,12 +70,31 @@ class PersonalReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             manifest = self.manifest(output)
-            with patch("personal_release.check_build_number"), patch("personal_release.run") as command:
+            with patch("personal_release.check_build_number"), patch("personal_release.verify_release_tag") as verify, patch("personal_release.run") as command:
                 draft(SimpleNamespace(directory=output))
             arguments = command.call_args.args
             self.assertIn("--draft", arguments)
-            self.assertEqual(arguments[arguments.index("--target") + 1], manifest["commit"])
+            self.assertIn("--verify-tag", arguments)
+            self.assertNotIn("--target", arguments)
+            verify.assert_called_once_with(2, manifest["commit"])
             self.assertNotIn("--prerelease", arguments)
+
+    def test_remote_tag_must_exist_at_packaged_commit(self):
+        commit = "a" * 40
+        with patch("personal_release.run", return_value=""):
+            with self.assertRaisesRegex(ValueError, "Push the packaged commit"):
+                verify_release_tag(2, commit)
+        with patch("personal_release.run", return_value=f"{'b' * 40}\trefs/tags/personal-2"):
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                verify_release_tag(2, commit)
+        with patch("personal_release.run", return_value=f"{commit}\trefs/tags/personal-2"):
+            verify_release_tag(2, commit)
+
+    def test_annotated_tag_is_checked_against_peeled_commit(self):
+        commit = "a" * 40
+        refs = f"{'b' * 40}\trefs/tags/personal-2\n{commit}\trefs/tags/personal-2^{{}}"
+        with patch("personal_release.run", return_value=refs):
+            verify_release_tag(2, commit)
 
     def test_nested_helpers_are_signed_before_framework_and_app(self):
         with tempfile.TemporaryDirectory() as directory:

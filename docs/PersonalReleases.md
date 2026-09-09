@@ -55,13 +55,13 @@ Packaging does not publish anything on GitHub. It uploads the app only to Apple'
 
 ## Draft and publish
 
-Review the app and release notes, then push the recorded commit to `main`. Upload a draft:
+Review the app and release notes, then push the recorded commit to `main`. Create `personal-BUILD` at the exact `commit` recorded in `release.json` and push that tag through your Git SSH connection. Do not retag the current branch tip if it differs from the packaged commit. Then upload a draft:
 
 ```sh
 python3 scripts/personal_release.py draft build/personal/releases/2
 ```
 
-This checks the hashes and source commit, then creates a **draft** release tagged `personal-2` with the ZIP and its appcast. Review it on GitHub, then publish it. Keep the prerelease checkbox consistent with the `--beta` packaging choice.
+This checks the artifact hashes and verifies the remote tag points to the packaged commit, then creates a **draft** release at that existing tag with the ZIP and its appcast. If the tag is missing, the command prints the exact tag and push commands to run. Using an existing tag with `--verify-tag` avoids asking the release API to create a ref at an older workflow-bearing commit; no extra OAuth `workflow` permission is needed. Review it on GitHub, then publish it. Keep the prerelease checkbox consistent with the `--beta` packaging choice.
 
 The **Personal update feed** workflow rebuilds the feed from published `personal-*` releases. It verifies matching tags, archive URLs, sizes, channels, signature format, and unique build numbers before deployment. Private signing keys stay on the release Mac. The ZIP's cryptographic signature is verified during packaging and again by Sparkle on the receiving Mac.
 
