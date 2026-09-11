@@ -63,16 +63,20 @@ public protocol DockControlling: Sendable {
 public actor DockController: DockControlling {
     let command: @Sendable (String, [String]) throws -> Data
     let runningDock: @MainActor @Sendable () -> Int32?
+    let selectMainDisplay: @MainActor @Sendable (String) throws -> Void
 
     public init() {
         command = Command.run
+        selectMainDisplay = MainDisplayController.select
         runningDock = {
             NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock")
                 .first { $0.isFinishedLaunching }?.processIdentifier
         }
     }
-    init(command: @escaping @Sendable (String, [String]) throws -> Data, runningDock: @escaping @MainActor @Sendable () -> Int32?) {
+    init(command: @escaping @Sendable (String, [String]) throws -> Data, runningDock: @escaping @MainActor @Sendable () -> Int32?,
+         selectMainDisplay: @escaping @MainActor @Sendable (String) throws -> Void = MainDisplayController.select) {
         self.command = command; self.runningDock = runningDock
+        self.selectMainDisplay = selectMainDisplay
     }
     private var busy = false
     public func read() throws -> DockSettings {
@@ -86,8 +90,9 @@ public actor DockController: DockControlling {
         busy = true
         defer { busy = false }
         try Task.checkCancellation()
+        if let id = settings.mainDisplayID { try await selectMainDisplay(id) }
         let current = try read()
-        guard current != settings else { return }
+        guard current.edge != settings.edge || current.autoHide != settings.autoHide else { return }
         if current.edge != settings.edge {
             _ = try command("/usr/bin/defaults", ["write", "com.apple.dock", "orientation", "-string", settings.edge.rawValue])
         }
@@ -100,7 +105,10 @@ public actor DockController: DockControlling {
             try await Task.sleep(for: .milliseconds(100))
             let newPID = await runningDock()
             let restarted = newPID != nil && newPID != oldPID
-            if restarted, try read() == settings { return }
+            if restarted {
+                let actual = try read()
+                if actual.edge == settings.edge && actual.autoHide == settings.autoHide { return }
+            }
         }
         throw DockError.verification
     }

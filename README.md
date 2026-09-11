@@ -1,6 +1,6 @@
 # HighDock
 
-HighDock remembers the Dock's edge and auto-hide setting for each monitor layout. Resize the Dock normally. HighDock never writes its size, magnification, or pinned apps.
+HighDock remembers the Dock's edge, auto-hide setting, and an optional main display for each monitor layout. Resize the Dock normally. HighDock never writes its size, magnification, or pinned apps.
 
 ## Run
 
@@ -15,6 +15,8 @@ Open `Package.swift` in Xcode to work on the app. The build script creates an ad
 
 On first launch the setup window opens. Later launches stay in the menu bar. Choose Open HighDock to configure the connected layout. Save and Apply creates a setup and changes its edge and hiding setting. Saved setups can be renamed, edited while disconnected, or deleted.
 
+Choose **Main display** to have HighDock make that monitor the Mac’s main display when the setup applies. Numbers in the picker match the preview. **Keep current main display** preserves the current choice. This changes the main display for the desktop as well as influencing Dock placement; macOS still decides which edges can host the Dock.
+
 Unknown layouts stay untouched. Changes made directly in macOS last until the next setup activation. Pause suspends automatic changes; explicit Save and Apply still works. Quit and deletion leave the Dock as it is.
 
 ## Distribution
@@ -26,14 +28,14 @@ Personal releases use Developer ID signing, Apple notarization, and Sparkle upda
 ## How it works
 
 - `HighDockCore` owns layout identity, setup records, versioned storage, and switching policy.
-- `HighDockPlatform` reads displays and applies Dock preferences. It writes only `orientation` and `autohide` through `defaults`, restarts the current user's Dock once when needed, then checks a newly launched Dock process and reads back the settings. A no-op never restarts the Dock.
+- `HighDockPlatform` reads displays and applies Dock preferences. It optionally changes the main display through a CoreGraphics configuration transaction, preserving relative display positions and mirroring. It writes only `orientation` and `autohide` through `defaults`, restarts the current user's Dock once when needed, then checks a newly launched Dock process and reads back the settings. A no-op never restarts the Dock.
 - `HighDock` owns the SwiftUI window, menu bar, login registration, one-second event debounce, and application queue.
 
-Layouts use persistent CoreGraphics display UUIDs, normalized origins, logical dimensions, primary display, and mirror membership. Enumeration order and names do not affect matching. Scaling that changes logical dimensions creates a new layout. Missing or duplicate identities do not match. UUID stability ultimately depends on macOS and the display or adapter. A new identity is treated as an unsaved layout.
+Layouts use persistent CoreGraphics display UUIDs, normalized origins, logical dimensions, primary display, and mirror membership. Setups with a chosen main display match both their saved layout and the layout after that choice applies. Overlapping setup matches are rejected. Enumeration order and names do not affect matching. Scaling that changes logical dimensions creates a new layout. Missing or duplicate identities do not match. UUID stability ultimately depends on macOS and the display or adapter. A new identity is treated as an unsaved layout.
 
 Setup data lives at `~/Library/Application Support/HighDock/setups.json`. Writes are atomic. Unsupported or corrupt files are kept unchanged and block saving until repaired. Pause and first-launch flags use the app's user defaults.
 
-Dock preference keys are an undocumented macOS integration. Readback and process restart verify application mechanics; they cannot prove where macOS visually placed the Dock. HighDock does not pin it to a screen and requests no Accessibility or Screen Recording permission.
+Dock preference keys are an undocumented macOS integration. Readback and process restart verify application mechanics; they cannot prove where macOS visually placed the Dock. HighDock can choose the main display but cannot independently pin the Dock to a screen. Main-display changes apply for the login session and are restored by HighDock when the saved setup next activates. It requests no Accessibility or Screen Recording permission.
 
 ## Check
 

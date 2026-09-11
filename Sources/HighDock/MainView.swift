@@ -37,6 +37,15 @@ struct MainView: View {
                     Section {
                         TextField("Setup name", text: $model.draftName)
                             .textFieldStyle(.roundedBorder)
+                        Picker("Main display", selection: $model.draftSettings.mainDisplayID) {
+                            Text("Keep current main display").tag(Optional<String>.none)
+                            ForEach(Array(model.displayedLayout.selectableDisplays.enumerated()), id: \.element.id) { index, display in
+                                Text("\(index + 1). \(display.name)").tag(Optional(display.id))
+                            }
+                        }
+                        Text("Choosing a display makes it the Mac’s main display when this setup applies. macOS still controls Dock placement on shared edges.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         Picker("Dock position", selection: $model.draftSettings.edge) {
                             ForEach(DockEdge.allCases, id: \.self) { edge in
                                 Text(edge.rawValue.capitalized).tag(edge)
@@ -183,7 +192,7 @@ struct MonitorPreview: View {
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
         GeometryReader { geometry in
-            let displays = layout.displays.filter { $0.mirrorOf == nil }
+            let displays = layout.selectableDisplays
             let minX = displays.map(\.x).min() ?? 0
             let minY = displays.map(\.y).min() ?? 0
             let width = max(1, (displays.map { $0.x + $0.width }.max() ?? 1) - minX)
@@ -192,19 +201,19 @@ struct MonitorPreview: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
-                ForEach(displays) { display in
+                ForEach(Array(displays.enumerated()), id: \.element.id) { index, display in
                     ZStack {
                         RoundedRectangle(cornerRadius: 9)
                             .fill(.linearGradient(colors: [.indigo.opacity(0.75), .blue.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
                         VStack {
                             HStack {
-                                Text(display.name).font(.system(size: 9, weight: .medium)).lineLimit(1)
+                                Text("\(index + 1). \(display.name)").font(.system(size: 9, weight: .medium)).lineLimit(1)
                                 Spacer(minLength: 0)
-                                if display.primary { Image(systemName: "star.fill").font(.system(size: 7)) }
+                                if isMain(display) { Image(systemName: "star.fill").font(.system(size: 7)) }
                             }.foregroundStyle(.white.opacity(0.9)).padding(8)
                             Spacer()
                         }
-                        if display.primary || displays.count == 1 {
+                        if isMain(display) || displays.count == 1 {
                             dockGlyph
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
                                 .padding(7)
@@ -217,12 +226,15 @@ struct MonitorPreview: View {
                     .position(x: (geometry.size.width - width * scale) / 2 + (display.x - minX + display.width / 2) * scale,
                               y: (geometry.size.height - height * scale) / 2 + (display.y - minY + display.height / 2) * scale)
                 }
-                VStack { Spacer(); Text("Edge preview · macOS chooses the display")
+                VStack { Spacer(); Text(settings.mainDisplayID == nil ? "Edge preview · macOS chooses the display" : "Requested main display · Dock placement depends on macOS")
                     .font(.system(size: 10)).foregroundStyle(.secondary).padding(.bottom, 8) }
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(layout.displays.count) displays. Dock on the \(settings.edge.rawValue). Auto-hide \(settings.autoHide ? "on" : "off"). Preview only; macOS chooses the display.")
+    }
+    private func isMain(_ display: Display) -> Bool {
+        settings.mainDisplayID.map { $0 == display.id } ?? display.primary
     }
     private var alignment: Alignment {
         switch settings.edge { case .left: .leading; case .bottom: .bottom; case .right: .trailing }

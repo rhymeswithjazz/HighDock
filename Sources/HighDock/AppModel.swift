@@ -35,12 +35,11 @@ final class AppModel {
     private var refreshGeneration = 0
 
     var activeSetup: Setup? {
-        guard let signature = layout.signature else { return nil }
-        return setups.first { $0.layout.signature == signature }
+        return setups.first { $0.matches(layout) }
     }
     var selectedSetup: Setup? { setups.first { $0.id == selectedID } }
-    var displayedLayout: DisplayLayout { selectedSetup?.layout ?? layout }
-    var editingCurrent: Bool { selectedID == nil || selectedSetup?.layout.signature == layout.signature }
+    var displayedLayout: DisplayLayout { editingCurrent ? layout : (selectedSetup?.layout ?? layout) }
+    var editingCurrent: Bool { selectedID == nil || selectedSetup?.matches(layout) == true }
     var canSave: Bool {
         storageAvailable && !applying && !settling && displayedLayout.signature != nil && !draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -115,7 +114,9 @@ final class AppModel {
     }
     func save() {
         guard canSave else { return }
-        let setup = Setup(id: selectedID ?? UUID(), name: draftName.trimmingCharacters(in: .whitespacesAndNewlines), layout: displayedLayout, settings: draftSettings)
+        let applyNow = editingCurrent
+        let savedLayout = applyNow && draftSettings.mainDisplayID == nil ? layout : (selectedSetup?.layout ?? displayedLayout)
+        let setup = Setup(id: selectedID ?? UUID(), name: draftName.trimmingCharacters(in: .whitespacesAndNewlines), layout: savedLayout, settings: draftSettings)
         var updated = setups
         if let index = updated.firstIndex(where: { $0.id == setup.id }) { updated[index] = setup }
         else if let index = updated.firstIndex(where: { $0.layout.signature == setup.layout.signature }) {
@@ -127,7 +128,10 @@ final class AppModel {
             setups = updated
             selectedID = updated.first { $0.layout.signature == setup.layout.signature }?.id
             error = nil
-            if editingCurrent { requestApply(setup.settings) }
+            if applyNow {
+                _ = policy.activate(layout, setups: setups)
+                requestApply(setup.settings)
+            }
             else { status = "Saved for the next time you connect." }
         } catch { failedSave = true; self.error = error.localizedDescription }
     }

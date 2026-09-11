@@ -132,3 +132,43 @@ private final class Fixture {
     #expect(try f.store.load().isEmpty)
     #expect(await f.dock.applications.count == 1)
 }
+
+@MainActor
+@Test func mainDisplayChangeKeepsSetupConnectedWithoutReapplying() async throws {
+    let f = Fixture(); defer { f.clean() }
+    let original = DisplayLayout(displays: [
+        Display(id: "laptop", x: 0, y: 0, width: 1440, height: 900, primary: true),
+        Display(id: "left", x: -1920, y: -1440, width: 2560, height: 1440),
+        Display(id: "right", x: 640, y: -1440, width: 2560, height: 1440)
+    ])
+    f.current = original
+    let model = try f.model()
+    try await f.settle(model)
+    model.draftSettings = DockSettings(edge: .left, mainDisplayID: "left")
+    model.save()
+    try await f.settle(model)
+    let savedID = try #require(model.selectedID)
+    f.current = try #require(original.makingPrimary("left"))
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup?.id == savedID)
+    #expect(model.editingCurrent)
+    #expect(await f.dock.applications.count == 1)
+    model.draftName = "Work"
+    model.save()
+    try await f.settle(model)
+    #expect(try f.store.load().first?.layout == original)
+    model.draftSettings.mainDisplayID = "right"
+    model.save()
+    try await f.settle(model)
+    #expect(await f.dock.applications.last?.mainDisplayID == "right")
+    f.current = try #require(original.makingPrimary("right"))
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup?.id == savedID)
+    model.draftSettings.mainDisplayID = nil
+    model.save()
+    try await f.settle(model)
+    #expect(model.activeSetup?.id == savedID)
+    #expect(try f.store.load().first?.layout == f.current)
+}

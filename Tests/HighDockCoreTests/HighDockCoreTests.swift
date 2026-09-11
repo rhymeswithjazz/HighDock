@@ -91,3 +91,46 @@ private let deskSetup = Setup(name: "Desk", layout: desk, settings: DockSettings
     try Data("broken".utf8).write(to: url)
     #expect(throws: (any Error).self) { try SetupStore(url: url).load() }
 }
+
+@Test func oldDockSettingsLeaveMainDisplayUnchanged() throws {
+    let settings = try JSONDecoder().decode(DockSettings.self, from: Data(#"{"edge":"left","autoHide":false}"#.utf8))
+    #expect(settings.mainDisplayID == nil)
+}
+
+@Test func mainDisplayChangePreservesThreeMonitorArrangement() throws {
+    let layout = DisplayLayout(displays: [
+        Display(id: "laptop", x: 0, y: 0, width: 1440, height: 900, primary: true),
+        Display(id: "left", x: -1920, y: -1440, width: 2560, height: 1440),
+        Display(id: "right", x: 640, y: -1440, width: 2560, height: 1440)
+    ])
+    let changed = try #require(layout.makingPrimary("left"))
+    #expect(changed.displays[1].x == 0 && changed.displays[1].y == 0)
+    #expect(changed.displays[0].x == 1920 && changed.displays[0].y == 1440)
+    #expect(changed.displays.filter(\.primary).map(\.id) == ["left"])
+    let setup = Setup(name: "Desk", layout: layout, settings: DockSettings(edge: .left, mainDisplayID: "left"))
+    #expect(setup.matches(layout))
+    #expect(setup.matches(changed))
+    var policy = SwitchingPolicy()
+    #expect(policy.activate(layout, setups: [setup]) == setup.settings)
+    #expect(policy.activate(changed, setups: [setup]) == nil)
+    #expect(policy.activate(changed, setups: [setup], force: true) == setup.settings)
+    #expect(layout.makingPrimary("missing") == nil)
+}
+
+@Test func mirroredDisplayCannotBecomeMain() {
+    let layout = DisplayLayout(displays: [display(), display("mirror", primary: false, mirrorOf: "laptop")])
+    #expect(layout.makingPrimary("mirror") == nil)
+    #expect(layout.makingPrimary("laptop")?.displays[1].mirrorOf == "laptop")
+}
+
+@Test func conflictingMainDisplaySetupsCannotOverwriteSavedFile() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = SetupStore(url: url)
+    let selected = Setup(name: "Desk", layout: desk, settings: DockSettings(mainDisplayID: "external"))
+    try store.save([selected])
+    #expect(try store.load() == [selected])
+    let other = Setup(name: "Other", layout: try #require(desk.makingPrimary("external")), settings: DockSettings())
+    #expect(throws: SetupStore.StoreError.self) { try store.save([selected, other]) }
+    #expect(try store.load() == [selected])
+}

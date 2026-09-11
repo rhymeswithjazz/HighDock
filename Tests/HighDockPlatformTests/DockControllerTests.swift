@@ -61,3 +61,31 @@ private final class FakeDock: Sendable {
     fake.state.withLock { $0.ignoreWrite = true }
     await #expect(throws: DockError.self) { try await fake.controller.apply(DockSettings(edge: .left)) }
 }
+
+@Test func mainDisplayAppliesEvenWhenDockPreferencesAlreadyMatch() async throws {
+    let selected = Mutex<[String]>([])
+    let fake = FakeDock()
+    let controller = DockController(command: { try fake.run($0, $1) }, runningDock: { 100 },
+        selectMainDisplay: { id in selected.withLock { $0.append(id) } })
+    try await controller.apply(DockSettings(mainDisplayID: "external"))
+    #expect(selected.withLock { $0 } == ["external"])
+    #expect(fake.state.withLock { $0.writes.isEmpty && $0.restarts == 0 })
+}
+
+@Test func unavailableMainDisplayDoesNotChangeDockPreferences() async {
+    let fake = FakeDock()
+    let controller = DockController(command: { try fake.run($0, $1) }, runningDock: { 100 },
+        selectMainDisplay: { _ in throw MainDisplayController.Failure.unavailable })
+    await #expect(throws: MainDisplayController.Failure.self) {
+        try await controller.apply(DockSettings(edge: .left, mainDisplayID: "missing"))
+    }
+    #expect(fake.state.withLock { $0.writes.isEmpty && $0.restarts == 0 })
+}
+
+@Test func mainDisplaySelectionDoesNotBreakDockReadback() async throws {
+    let fake = FakeDock()
+    let controller = DockController(command: { try fake.run($0, $1) },
+        runningDock: { Int32(100 + fake.state.withLock { $0.restarts }) }, selectMainDisplay: { _ in })
+    try await controller.apply(DockSettings(edge: .left, mainDisplayID: "external"))
+    #expect(fake.state.withLock { $0.settings.edge == .left && $0.restarts == 1 })
+}
