@@ -28,7 +28,7 @@ struct MainView: View {
                                     .fixedSize()
                             }
                             MonitorPreview(layout: model.displayedLayout, settings: model.draftSettings)
-                                .frame(height: 170)
+                                .frame(height: 220)
                                 .animation(reduceMotion ? nil : .smooth(duration: 0.25), value: model.draftSettings)
                         }
                         .padding(.vertical, 4)
@@ -96,6 +96,7 @@ struct MainView: View {
                 }
                 .formStyle(.grouped)
                 .scrollIndicators(.hidden)
+                .clipped()
                 actionBar
             }
             .background(Color(nsColor: .windowBackgroundColor))
@@ -202,6 +203,7 @@ struct MonitorPreview: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
                 ForEach(Array(displays.enumerated()), id: \.element.id) { index, display in
+                    let showsDock = isMain(display) || displays.count == 1
                     ZStack {
                         RoundedRectangle(cornerRadius: 9)
                             .fill(.linearGradient(colors: [.indigo.opacity(0.75), .blue.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing))
@@ -210,10 +212,14 @@ struct MonitorPreview: View {
                                 Text("\(index + 1). \(display.name)").font(.system(size: 9, weight: .medium)).lineLimit(1)
                                 Spacer(minLength: 0)
                                 if isMain(display) { Image(systemName: "star.fill").font(.system(size: 7)) }
-                            }.foregroundStyle(.white.opacity(0.9)).padding(8)
+                            }
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.vertical, 8)
+                            .padding(.leading, showsDock && settings.edge == .left ? 24 : 8)
+                            .padding(.trailing, showsDock && settings.edge == .right ? 24 : 8)
                             Spacer()
                         }
-                        if isMain(display) || displays.count == 1 {
+                        if showsDock {
                             dockGlyph
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
                                 .padding(7)
@@ -241,13 +247,13 @@ struct MonitorPreview: View {
     }
     private var dockGlyph: some View {
         let vertical = settings.edge != .bottom
-        return (vertical ? AnyLayout(VStackLayout(spacing: 3)) : AnyLayout(HStackLayout(spacing: 3))) {
+        return (vertical ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 2))) {
             ForEach(0..<5) { index in
                 RoundedRectangle(cornerRadius: 2).fill([Color.blue, .white, .orange, .purple, .mint][index])
-                    .frame(width: 7, height: 7)
+                    .frame(width: 5, height: 5)
             }
         }
-        .padding(4)
+        .padding(3)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 5))
         .overlay(RoundedRectangle(cornerRadius: 5).stroke(.white.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: settings.autoHide ? [2, 2] : [])))
         .opacity(settings.autoHide ? 0.5 : 1)
