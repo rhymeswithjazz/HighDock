@@ -59,10 +59,14 @@ struct MainView: View {
                         .toggleStyle(.switch)
                         Toggle(isOn: $model.draftAnimationEnabled) {
                             Text("Animate Dock show and hide")
-                            Text("Turn off to remove the slide animation. The delay before showing stays unchanged.")
+                            Text(model.draftSettings.autoHide
+                                 ? "Turn off to remove the slide animation. The delay before showing stays unchanged."
+                                 : "Turn on automatic hiding to change the animation.")
                         }
                         .toggleStyle(.switch)
                         .disabled(!model.draftSettings.autoHide)
+                        .saturation(model.draftSettings.autoHide ? 1 : 0)
+                        .opacity(model.draftSettings.autoHide ? 1 : 0.55)
                     } header: {
                         Text("Dock Settings")
                     } footer: {

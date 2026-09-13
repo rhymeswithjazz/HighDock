@@ -181,7 +181,7 @@ def draft(args):
     verify_release_tag(build, manifest["commit"])
     command = ["gh", "release", "create", f"personal-{build}", "--repo", REPOSITORY,
                "--draft", "--verify-tag",
-               "--title", f"HighDock {manifest['version']} (build {build})", "--notes-file", str(output / "notes.md")]
+               "--title", f"HighDock {manifest['version']}", "--notes-file", str(output / "notes.md")]
     if manifest["beta"]:
         command += ["--prerelease"]
     run(*command, str(output / "appcast.xml"), str(output / f"payload/HighDock-{build}.zip"))

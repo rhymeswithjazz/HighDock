@@ -70,7 +70,7 @@ struct AppMenu: View {
         } else {
             Text("Updates disabled in development builds")
         }
-        Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"))")
+        Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0")")
         Divider()
         Button("Quit HighDock") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
