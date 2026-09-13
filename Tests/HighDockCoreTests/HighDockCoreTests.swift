@@ -95,6 +95,31 @@ private let deskSetup = Setup(name: "Desk", layout: desk, settings: DockSettings
 @Test func oldDockSettingsLeaveMainDisplayUnchanged() throws {
     let settings = try JSONDecoder().decode(DockSettings.self, from: Data(#"{"edge":"left","autoHide":false}"#.utf8))
     #expect(settings.mainDisplayID == nil)
+    #expect(settings.animation == nil)
+}
+
+@Test func animationSettingsRoundTripIncludingDisabledCustomTiming() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = SetupStore(url: url)
+    for animation in [DockAnimation(), DockAnimation(enabled: false), DockAnimation(enabled: false, timeModifier: 0.25)] {
+        var setup = laptopSetup
+        setup.settings.animation = animation
+        try store.save([setup])
+        #expect(try store.load() == [setup])
+    }
+}
+
+@Test func invalidAnimationCannotOverwriteSavedSetups() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    let store = SetupStore(url: url)
+    try store.save([laptopSetup])
+    let original = try Data(contentsOf: url)
+    var setup = laptopSetup
+    setup.settings.animation = DockAnimation(timeModifier: -1)
+    #expect(throws: SetupStore.StoreError.self) { try store.save([setup]) }
+    #expect(try Data(contentsOf: url) == original)
 }
 
 @Test func mainDisplayChangePreservesThreeMonitorArrangement() throws {

@@ -16,7 +16,11 @@ private final class FakeDock: Sendable {
     func run(_ path: String, _ arguments: [String]) throws -> Data {
         try state.withLock { value in
             if arguments.first == "export" {
-                return try PropertyListSerialization.data(fromPropertyList: ["orientation": value.settings.edge.rawValue, "autohide": value.settings.autoHide, "tilesize": 53], format: .xml, options: 0)
+                var preferences: [String: Any] = ["orientation": value.settings.edge.rawValue, "autohide": value.settings.autoHide, "tilesize": 53, "autohide-delay": 0.7]
+                if let modifier = value.settings.animation?.effectiveTimeModifier {
+                    preferences["autohide-time-modifier"] = modifier
+                }
+                return try PropertyListSerialization.data(fromPropertyList: preferences, format: .xml, options: 0)
             }
             if path.hasSuffix("killall") { value.restarts += 1; return Data() }
             if value.failWrite { throw DockError.command("Test write failure") }
@@ -24,12 +28,92 @@ private final class FakeDock: Sendable {
             if !value.ignoreWrite {
                 if arguments[2] == "orientation" { value.settings.edge = DockEdge(rawValue: arguments[4])! }
                 if arguments[2] == "autohide" { value.settings.autoHide = arguments[4] == "true" }
+                if arguments[2] == "autohide-time-modifier" {
+                    let modifier = arguments[0] == "delete" ? nil : Double(arguments[4])
+                    value.settings.animation = DockAnimation(enabled: modifier != 0, timeModifier: modifier == 0 ? nil : modifier)
+                }
             }
             return Data()
         }
     }
     var controller: DockController {
         DockController(command: { [self] in try run($0, $1) }, runningDock: { [self] in Int32(100 + state.withLock { $0.restarts }) })
+    }
+}
+
+@Test func animationReadPreservesSystemDisabledAndCustomTiming() async throws {
+    for animation in [DockAnimation(), DockAnimation(enabled: false), DockAnimation(timeModifier: 0.25)] {
+        let fake = FakeDock()
+        fake.state.withLock { $0.settings.animation = animation }
+        #expect(try await fake.controller.read().animation == animation)
+    }
+}
+
+@Test func disablingAnimationBatchesWithOtherChanges() async throws {
+    let fake = FakeDock()
+    try await fake.controller.apply(DockSettings(edge: .left, autoHide: true, animation: DockAnimation(enabled: false)))
+    #expect(fake.state.withLock { $0.writes } == [
+        ["write", "com.apple.dock", "orientation", "-string", "left"],
+        ["write", "com.apple.dock", "autohide", "-bool", "true"],
+        ["write", "com.apple.dock", "autohide-time-modifier", "-float", "0.0"]
+    ])
+    #expect(fake.state.withLock { $0.restarts } == 1)
+}
+
+@Test func enablingSystemAnimationDeletesOverride() async throws {
+    let fake = FakeDock()
+    fake.state.withLock { $0.settings.animation = DockAnimation(enabled: false) }
+    try await fake.controller.apply(DockSettings(animation: DockAnimation()))
+    #expect(fake.state.withLock { $0.writes } == [["delete", "com.apple.dock", "autohide-time-modifier"]])
+    #expect(try await fake.controller.read().animation == DockAnimation())
+}
+
+@Test func enablingCustomAnimationRestoresSavedTiming() async throws {
+    let fake = FakeDock()
+    fake.state.withLock { $0.settings.animation = DockAnimation(enabled: false) }
+    try await fake.controller.apply(DockSettings(animation: DockAnimation(timeModifier: 0.25)))
+    #expect(fake.state.withLock { $0.writes } == [["write", "com.apple.dock", "autohide-time-modifier", "-float", "0.25"]])
+}
+
+@Test func unmanagedAndMatchingAnimationDoNotWriteOrRestart() async throws {
+    for animation in [DockAnimation(), DockAnimation(enabled: false), DockAnimation(timeModifier: 0.25)] {
+        let fake = FakeDock()
+        fake.state.withLock { $0.settings.animation = animation }
+        try await fake.controller.apply(DockSettings())
+        try await fake.controller.apply(DockSettings(animation: animation))
+        #expect(fake.state.withLock { $0.writes.isEmpty && $0.restarts == 0 })
+    }
+}
+
+@Test func animationWriteFailureDoesNotRestartDock() async {
+    let fake = FakeDock()
+    fake.state.withLock { $0.failWrite = true }
+    await #expect(throws: DockError.self) {
+        try await fake.controller.apply(DockSettings(animation: DockAnimation(enabled: false)))
+    }
+    #expect(fake.state.withLock { $0.restarts } == 0)
+}
+
+@Test func ignoredAnimationWriteAndDeletionCannotReportSuccess() async {
+    for enabled in [true, false] {
+        let fake = FakeDock()
+        fake.state.withLock {
+            $0.settings.animation = DockAnimation(enabled: !enabled)
+            $0.ignoreWrite = true
+        }
+        await #expect(throws: DockError.self) {
+            try await fake.controller.apply(DockSettings(animation: DockAnimation(enabled: enabled)))
+        }
+    }
+}
+
+@Test func invalidAnimationDoesNotChangeDock() async {
+    for modifier in [-1.0, 0.0, Double.infinity, Double.nan] {
+        let fake = FakeDock()
+        await #expect(throws: DockError.self) {
+            try await fake.controller.apply(DockSettings(edge: .left, animation: DockAnimation(timeModifier: modifier)))
+        }
+        #expect(fake.state.withLock { $0.writes.isEmpty && $0.restarts == 0 })
     }
 }
 

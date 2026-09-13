@@ -57,6 +57,12 @@ struct MainView: View {
                             Text("Show the Dock when the pointer reaches its edge.")
                         }
                         .toggleStyle(.switch)
+                        Toggle(isOn: $model.draftAnimationEnabled) {
+                            Text("Animate Dock show and hide")
+                            Text("Turn off to remove the slide animation. The delay before showing stays unchanged.")
+                        }
+                        .toggleStyle(.switch)
+                        .disabled(!model.draftSettings.autoHide)
                     } header: {
                         Text("Dock Settings")
                     } footer: {
