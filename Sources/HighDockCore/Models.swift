@@ -4,14 +4,29 @@ public enum DockEdge: String, Codable, CaseIterable, Sendable {
     case left, bottom, right
 }
 
+public struct DockAnimation: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var timeModifier: Double?
+
+    public init(enabled: Bool = true, timeModifier: Double? = nil) {
+        self.enabled = enabled
+        self.timeModifier = timeModifier
+    }
+
+    public var effectiveTimeModifier: Double? { enabled ? timeModifier : 0 }
+    public var isValid: Bool { timeModifier.map { $0.isFinite && $0 > 0 } ?? true }
+}
+
 public struct DockSettings: Codable, Equatable, Sendable {
     public var edge: DockEdge
     public var autoHide: Bool
     public var mainDisplayID: String?
-    public init(edge: DockEdge = .bottom, autoHide: Bool = false, mainDisplayID: String? = nil) {
+    public var animation: DockAnimation?
+    public init(edge: DockEdge = .bottom, autoHide: Bool = false, mainDisplayID: String? = nil, animation: DockAnimation? = nil) {
         self.edge = edge
         self.autoHide = autoHide
         self.mainDisplayID = mainDisplayID
+        self.animation = animation
     }
 }
 
@@ -116,6 +131,7 @@ public struct SetupStore: Sendable {
     private static func validate(_ setups: [Setup]) throws {
         var signatures = Set<String>()
         for setup in setups {
+            guard setup.settings.animation?.isValid != false else { throw StoreError.invalidData }
             if let id = setup.settings.mainDisplayID, setup.layout.makingPrimary(id) == nil { throw StoreError.invalidData }
             guard signatures.isDisjoint(with: setup.matchingSignatures) else { throw StoreError.conflictingLayouts }
             signatures.formUnion(setup.matchingSignatures)

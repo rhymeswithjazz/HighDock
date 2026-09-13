@@ -82,22 +82,34 @@ public actor DockController: DockControlling {
     public func read() throws -> DockSettings {
         let data = try command("/usr/bin/defaults", ["export", "com.apple.dock", "-"])
         let values = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] ?? [:]
+        let modifier = (values["autohide-time-modifier"] as? NSNumber)?.doubleValue
+        let animation = DockAnimation(enabled: modifier != 0, timeModifier: modifier == 0 ? nil : modifier)
+        guard animation.isValid else { throw DockError.command("The Dock animation timing is invalid.") }
         return DockSettings(edge: DockEdge(rawValue: values["orientation"] as? String ?? "bottom") ?? .bottom,
-                            autoHide: (values["autohide"] as? NSNumber)?.boolValue ?? false)
+                            autoHide: (values["autohide"] as? NSNumber)?.boolValue ?? false, animation: animation)
     }
     public func apply(_ settings: DockSettings) async throws {
         while busy { try await Task.sleep(for: .milliseconds(50)) }
         busy = true
         defer { busy = false }
         try Task.checkCancellation()
+        guard settings.animation?.isValid != false else { throw DockError.command("The Dock animation timing is invalid.") }
         if let id = settings.mainDisplayID { try await selectMainDisplay(id) }
         let current = try read()
-        guard current.edge != settings.edge || current.autoHide != settings.autoHide else { return }
+        let animationChanged = settings.animation != nil && settings.animation?.effectiveTimeModifier != current.animation?.effectiveTimeModifier
+        guard current.edge != settings.edge || current.autoHide != settings.autoHide || animationChanged else { return }
         if current.edge != settings.edge {
             _ = try command("/usr/bin/defaults", ["write", "com.apple.dock", "orientation", "-string", settings.edge.rawValue])
         }
         if current.autoHide != settings.autoHide {
             _ = try command("/usr/bin/defaults", ["write", "com.apple.dock", "autohide", "-bool", settings.autoHide ? "true" : "false"])
+        }
+        if animationChanged {
+            if let modifier = settings.animation?.effectiveTimeModifier {
+                _ = try command("/usr/bin/defaults", ["write", "com.apple.dock", "autohide-time-modifier", "-float", String(modifier)])
+            } else {
+                _ = try command("/usr/bin/defaults", ["delete", "com.apple.dock", "autohide-time-modifier"])
+            }
         }
         let oldPID = await runningDock()
         _ = try command("/usr/bin/killall", ["-u", NSUserName(), "Dock"])
@@ -107,7 +119,8 @@ public actor DockController: DockControlling {
             let restarted = newPID != nil && newPID != oldPID
             if restarted {
                 let actual = try read()
-                if actual.edge == settings.edge && actual.autoHide == settings.autoHide { return }
+                if actual.edge == settings.edge && actual.autoHide == settings.autoHide,
+                   settings.animation == nil || actual.animation?.effectiveTimeModifier == settings.animation?.effectiveTimeModifier { return }
             }
         }
         throw DockError.verification

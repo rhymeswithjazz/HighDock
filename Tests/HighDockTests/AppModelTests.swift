@@ -13,6 +13,41 @@ private actor MemoryDock: DockControlling {
 }
 
 @MainActor
+@Test func animationToggleRestoresCustomTimingAcrossSaveAndReload() async throws {
+    let f = Fixture(); defer { f.clean() }
+    await f.dock.changeManually(DockSettings(autoHide: true, animation: DockAnimation(timeModifier: 0.25)))
+    let model = try f.model()
+    try await f.settle(model)
+    model.draftAnimationEnabled = false
+    model.save()
+    try await f.settle(model)
+    await model.loadDraft()
+    #expect(model.draftSettings.animation == DockAnimation(enabled: false, timeModifier: 0.25))
+    model.draftAnimationEnabled = true
+    model.save()
+    try await f.settle(model)
+    #expect(try f.store.load().first?.settings.animation == DockAnimation(timeModifier: 0.25))
+}
+
+@MainActor
+@Test func olderSetupInheritsTimingWithoutManagingItUntilEdited() async throws {
+    let f = Fixture(); defer { f.clean() }
+    await f.dock.changeManually(DockSettings(animation: DockAnimation(enabled: false)))
+    let setup = Setup(name: "Desk", layout: f.desk, settings: DockSettings(autoHide: true))
+    let model = try f.model(setups: [setup])
+    try await f.settle(model)
+    model.selectedID = setup.id
+    await model.loadDraft()
+    #expect(!model.draftAnimationEnabled)
+    model.save()
+    #expect(try f.store.load().first?.settings.animation == nil)
+    model.draftAnimationEnabled = true
+    model.save()
+    #expect(try f.store.load().first?.settings.animation == DockAnimation())
+    #expect(await f.dock.applications.isEmpty)
+}
+
+@MainActor
 private final class Fixture {
     let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     let dock = MemoryDock()

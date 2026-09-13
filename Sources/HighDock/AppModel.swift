@@ -11,6 +11,15 @@ final class AppModel {
     var selectedID: UUID?
     var draftName = ""
     var draftSettings = DockSettings()
+    var inheritedDockAnimation = DockAnimation()
+    var draftAnimationEnabled: Bool {
+        get { (draftSettings.animation ?? inheritedDockAnimation).enabled }
+        set {
+            var animation = draftSettings.animation ?? inheritedDockAnimation
+            animation.enabled = newValue
+            draftSettings.animation = animation
+        }
+    }
     var paused: Bool
     var applying = false
     var error: String?
@@ -101,6 +110,13 @@ final class AppModel {
     func loadDraft() async {
         if let setup = selectedSetup {
             draftName = setup.name; draftSettings = setup.settings
+            if setup.settings.animation == nil {
+                do {
+                    let settings = try await dock.read()
+                    guard selectedID == setup.id else { return }
+                    inheritedDockAnimation = settings.animation ?? DockAnimation()
+                } catch { self.error = error.localizedDescription }
+            }
         } else {
             draftName = layout.displays.count == 1 ? (layout.displays.first?.name ?? "My Mac") : "My desk"
             let signature = layout.signature

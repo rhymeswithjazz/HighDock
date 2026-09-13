@@ -28,12 +28,14 @@ Personal releases use Developer ID signing, Apple notarization, and Sparkle upda
 ## How it works
 
 - `HighDockCore` owns layout identity, setup records, versioned storage, and switching policy.
-- `HighDockPlatform` reads displays and applies Dock preferences. It optionally changes the main display through a CoreGraphics configuration transaction, preserving relative display positions and mirroring. It writes only `orientation` and `autohide` through `defaults`, restarts the current user's Dock once when needed, then checks a newly launched Dock process and reads back the settings. A no-op never restarts the Dock.
+- `HighDockPlatform` reads displays and applies Dock preferences. It optionally changes the main display through a CoreGraphics configuration transaction, preserving relative display positions and mirroring. It writes only `orientation`, `autohide`, and `autohide-time-modifier` through `defaults`, restarts the current user's Dock once when needed, then checks a newly launched Dock process and reads back the settings. A no-op never restarts the Dock.
 - `HighDock` owns the SwiftUI window, menu bar, login registration, one-second event debounce, and application queue.
 
 Layouts use persistent CoreGraphics display UUIDs, normalized origins, logical dimensions, primary display, and mirror membership. Setups with a chosen main display match both their saved layout and the layout after that choice applies. Overlapping setup matches are rejected. Enumeration order and names do not affect matching. Scaling that changes logical dimensions creates a new layout. Missing or duplicate identities do not match. UUID stability ultimately depends on macOS and the display or adapter. A new identity is treated as an unsaved layout.
 
 Setup data lives at `~/Library/Application Support/HighDock/setups.json`. Writes are atomic. Unsupported or corrupt files are kept unchanged and block saving until repaired. Pause and first-launch flags use the app's user defaults.
+
+Each setup can turn Dock show/hide animation on or off. The control is available when auto-hide is on. Turning animation off writes a zero time modifier; turning it back on restores the setup's captured custom timing, or deletes the override to use macOS timing. The initial show delay stays unchanged. Older setups leave animation timing alone until the control is edited.
 
 Dock preference keys are an undocumented macOS integration. Readback and process restart verify application mechanics; they cannot prove where macOS visually placed the Dock. HighDock can choose the main display but cannot independently pin the Dock to a screen. Main-display changes apply for the login session and are restored by HighDock when the saved setup next activates. It requests no Accessibility or Screen Recording permission.
 
