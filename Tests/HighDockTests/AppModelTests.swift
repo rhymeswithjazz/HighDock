@@ -207,3 +207,87 @@ private final class Fixture {
     #expect(model.activeSetup?.id == savedID)
     #expect(try f.store.load().first?.layout == f.current)
 }
+
+@MainActor
+@Test func reconnectWithDifferentMainDisplaySelectsSavedOfficeAndAppliesOnce() async throws {
+    let f = Fixture(); defer { f.clean() }
+    let office = DisplayLayout(displays: [
+        Display(id: "left", x: 0, y: 0, width: 3008, height: 1692, primary: true),
+        Display(id: "laptop", x: 2188, y: 1692, width: 1512, height: 982),
+        Display(id: "right", x: 3008, y: 0, width: 3008, height: 1692)
+    ])
+    let setup = Setup(name: "Work Office", layout: office, settings: DockSettings(edge: .left, mainDisplayID: "left"))
+    let model = try f.model(setups: [setup])
+    try await f.settle(model)
+    f.current = try #require(office.makingPrimary("laptop"))
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup?.id == setup.id)
+    #expect(model.selectedID == setup.id)
+    #expect(model.draftName == "Work Office")
+    #expect(model.editingCurrent)
+    #expect(await f.dock.applications == [setup.settings])
+    f.current = office
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup?.id == setup.id)
+    #expect(await f.dock.applications == [setup.settings])
+    #expect(try f.store.load() == [setup])
+}
+
+@MainActor
+@Test func refreshRecognizesSetupSavedByAnotherInstance() async throws {
+    let f = Fixture(); defer { f.clean() }
+    let outdated = Setup(name: "Work Office", layout: f.desk, settings: DockSettings(edge: .left))
+    let model = try f.model(setups: [outdated])
+    try await f.settle(model)
+    model.selectedID = outdated.id
+    await model.loadDraft()
+    let updated = Setup(id: outdated.id, name: "Office Desk", layout: f.laptop, settings: outdated.settings)
+    try f.store.save([updated])
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup == updated)
+    #expect(model.selectedID == updated.id)
+    #expect(model.draftName == updated.name)
+    #expect(model.editingCurrent)
+    #expect(await f.dock.applications == [updated.settings])
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(await f.dock.applications == [updated.settings])
+}
+
+@MainActor
+@Test func refreshPreservesDraftWhileReloadingSavedSetups() async throws {
+    let f = Fixture(); defer { f.clean() }
+    let setup = Setup(name: "Laptop", layout: f.laptop, settings: DockSettings(edge: .left))
+    let model = try f.model(setups: [setup])
+    try await f.settle(model)
+    model.draftName = "My edits"
+    model.draftSettings.edge = .right
+    var updated = setup
+    updated.name = "Changed elsewhere"
+    try f.store.save([updated])
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(model.activeSetup == updated)
+    #expect(model.draftName == "My edits")
+    #expect(model.draftSettings.edge == .right)
+    #expect(await f.dock.applications == [setup.settings])
+}
+
+@MainActor
+@Test func refreshLeavesCorruptSavedFileUntouched() async throws {
+    let f = Fixture(); defer { f.clean() }
+    let model = try f.model()
+    try await f.settle(model)
+    let corrupt = Data("broken".utf8)
+    try corrupt.write(to: f.store.url)
+    model.scheduleRefresh()
+    try await f.settle(model)
+    #expect(!model.storageAvailable)
+    #expect(model.error != nil)
+    #expect(!model.canSave)
+    #expect(try Data(contentsOf: f.store.url) == corrupt)
+    #expect(await f.dock.applications.isEmpty)
+}

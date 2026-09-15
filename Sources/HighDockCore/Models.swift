@@ -101,6 +101,14 @@ public extension Setup {
     func matches(_ layout: DisplayLayout) -> Bool {
         layout.signature.map { matchingSignatures.contains($0) } ?? false
     }
+
+    static func matching(_ layout: DisplayLayout, among setups: [Setup]) -> Setup? {
+        if let exact = setups.first(where: { $0.matches(layout) }) { return exact }
+        guard let mainID = layout.selectableDisplays.first?.id,
+              let signature = layout.makingPrimary(mainID)?.signature else { return nil }
+        let candidates = setups.filter { $0.layout.makingPrimary(mainID)?.signature == signature }
+        return candidates.count == 1 ? candidates.first : nil
+    }
 }
 
 public struct SetupFile: Codable, Equatable, Sendable {
@@ -155,8 +163,8 @@ public struct SwitchingPolicy: Sendable {
     public init() {}
     public mutating func activate(_ layout: DisplayLayout, setups: [Setup], force: Bool = false) -> DockSettings? {
         let signature = layout.signature
-        let setup = setups.first { $0.matches(layout) }
-        let changed = signature != lastSignature && (setup == nil || setup?.id != lastSetupID)
+        let setup = Setup.matching(layout, among: setups)
+        let changed = setup?.id != lastSetupID
         lastSignature = signature
         lastSetupID = setup?.id
         guard !paused, signature != nil, changed || force else { return nil }

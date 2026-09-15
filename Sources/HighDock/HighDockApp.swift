@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
     func showWindow() {
+        model.scheduleRefresh()
         if windowController == nil {
             let host = NSHostingController(rootView: MainView(model: model))
             let window = NSWindow(contentViewController: host)

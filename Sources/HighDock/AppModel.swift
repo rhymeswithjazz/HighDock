@@ -44,11 +44,11 @@ final class AppModel {
     private var refreshGeneration = 0
 
     var activeSetup: Setup? {
-        return setups.first { $0.matches(layout) }
+        Setup.matching(layout, among: setups)
     }
     var selectedSetup: Setup? { setups.first { $0.id == selectedID } }
     var displayedLayout: DisplayLayout { editingCurrent ? layout : (selectedSetup?.layout ?? layout) }
-    var editingCurrent: Bool { selectedID == nil || selectedSetup?.matches(layout) == true }
+    var editingCurrent: Bool { selectedID == nil || selectedID == activeSetup?.id }
     var canSave: Bool {
         storageAvailable && !applying && !settling && displayedLayout.signature != nil && !draftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -88,9 +88,30 @@ final class AppModel {
             guard let self, !Task.isCancelled else { return }
             let shouldForce = self.forceRefresh
             let previous = self.layout.signature
+            let previousSelection = self.selectedSetup
+            let hasDraftChanges = previousSelection.map {
+                self.draftName != $0.name || self.draftSettings != $0.settings
+            } ?? !self.draftName.isEmpty
+            do {
+                self.setups = try self.store.load()
+                if !self.storageAvailable { self.error = nil }
+                self.storageAvailable = true
+            } catch {
+                self.storageAvailable = false
+                self.error = error.localizedDescription
+                self.settling = false
+                self.pendingSettings = nil
+                return
+            }
             self.layout = self.displayReader()
             if previous != self.layout.signature || shouldForce {
                 self.selectedID = self.activeSetup?.id
+                await self.loadDraft()
+            } else if !hasDraftChanges && previousSelection != self.selectedSetup {
+                if self.selectedSetup == nil { self.selectedID = self.activeSetup?.id }
+                await self.loadDraft()
+            } else if !hasDraftChanges, self.selectedID == nil, let active = self.activeSetup {
+                self.selectedID = active.id
                 await self.loadDraft()
             }
             guard !Task.isCancelled, generation == self.refreshGeneration else { return }

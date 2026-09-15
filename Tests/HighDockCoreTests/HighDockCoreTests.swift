@@ -159,3 +159,46 @@ private let deskSetup = Setup(name: "Desk", layout: desk, settings: DockSettings
     #expect(throws: SetupStore.StoreError.self) { try store.save([selected, other]) }
     #expect(try store.load() == [selected])
 }
+
+private let office = DisplayLayout(displays: [
+    Display(id: "left", x: 0, y: 0, width: 3008, height: 1692, primary: true),
+    Display(id: "laptop", x: 2188, y: 1692, width: 1512, height: 982),
+    Display(id: "right", x: 3008, y: 0, width: 3008, height: 1692)
+])
+
+@Test func reconnectRecognizesOfficeWithADifferentMainDisplay() throws {
+    for mainDisplayID: String? in [nil, "left"] {
+        let setup = Setup(name: "Work Office", layout: office, settings: DockSettings(edge: .left, mainDisplayID: mainDisplayID))
+        let reconnected = try #require(office.makingPrimary("laptop"))
+        #expect(Setup.matching(reconnected, among: [setup]) == setup)
+        var policy = SwitchingPolicy()
+        #expect(policy.activate(reconnected, setups: [setup]) == setup.settings)
+        #expect(policy.activate(office, setups: [setup]) == nil)
+        #expect(policy.activate(laptop, setups: [setup]) == nil)
+        #expect(policy.activate(reconnected, setups: [setup]) == setup.settings)
+    }
+}
+
+@Test func reconnectMatchingPreservesExactChoicesAndRejectsAmbiguity() throws {
+    let left = Setup(name: "Left", layout: office, settings: DockSettings(edge: .left))
+    let right = Setup(name: "Right", layout: try #require(office.makingPrimary("right")), settings: DockSettings(edge: .right))
+    for setups in [[left, right], [right, left]] {
+        #expect(Setup.matching(office, among: setups) == left)
+        #expect(Setup.matching(right.layout, among: setups) == right)
+        #expect(Setup.matching(try #require(office.makingPrimary("laptop")), among: setups) == nil)
+    }
+}
+
+@Test func reconnectMatchingStillRequiresTheSameDisplaysAndArrangement() throws {
+    let setup = Setup(name: "Work Office", layout: office, settings: DockSettings(edge: .left))
+    let reconnected = try #require(office.makingPrimary("laptop"))
+    var moved = reconnected; moved.displays[1].x += 1
+    var resized = reconnected; resized.displays[0].width += 1
+    var replaced = reconnected; replaced.displays[0].id = "different"
+    var mirrored = reconnected; mirrored.displays[2].mirrorOf = "left"
+    var missing = reconnected; missing.displays.removeLast()
+    var duplicate = reconnected; duplicate.displays[2].id = "left"
+    for layout in [moved, resized, replaced, mirrored, missing, duplicate, DisplayLayout(displays: [])] {
+        #expect(Setup.matching(layout, among: [setup]) == nil)
+    }
+}

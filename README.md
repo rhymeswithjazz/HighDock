@@ -17,6 +17,8 @@ On first launch the setup window opens. Later launches stay in the menu bar. Cho
 
 Choose **Main display** to have HighDock make that monitor the Mac’s main display when the setup applies. Numbers in the picker match the preview. **Keep current main display** preserves the current choice. This changes the main display for the desktop as well as influencing Dock placement; macOS still decides which edges can host the Dock.
 
+HighDock reloads saved setups when display state refreshes and when the setup window opens or becomes active, so changes saved by another running copy do not leave the connection label stale. Unsaved edits to a selected setup survive a refresh of an unchanged layout.
+
 Unknown layouts stay untouched. Changes made directly in macOS last until the next setup activation. Pause suspends automatic changes; explicit Save and Apply still works. Quit and deletion leave the Dock as it is.
 
 ## Distribution
@@ -31,7 +33,7 @@ Personal releases use Developer ID signing, Apple notarization, and Sparkle upda
 - `HighDockPlatform` reads displays and applies Dock preferences. It optionally changes the main display through a CoreGraphics configuration transaction, preserving relative display positions and mirroring. It writes only `orientation`, `autohide`, and `autohide-time-modifier` through `defaults`, restarts the current user's Dock once when needed, then checks a newly launched Dock process and reads back the settings. A no-op never restarts the Dock.
 - `HighDock` owns the SwiftUI window, menu bar, login registration, one-second event debounce, and application queue.
 
-Layouts use persistent CoreGraphics display UUIDs, normalized origins, logical dimensions, primary display, and mirror membership. Setups with a chosen main display match both their saved layout and the layout after that choice applies. Overlapping setup matches are rejected. Enumeration order and names do not affect matching. Scaling that changes logical dimensions creates a new layout. Missing or duplicate identities do not match. UUID stability ultimately depends on macOS and the display or adapter. A new identity is treated as an unsaved layout.
+Layouts use persistent CoreGraphics display UUIDs, normalized origins, logical dimensions, primary display, and mirror membership. Setups with a chosen main display match both their saved layout and the layout after that choice applies. If neither matches, HighDock recognizes a unique saved setup with the same displays, arrangement, dimensions, and mirroring regardless of which display macOS made primary on reconnect. Exact matches take priority; ambiguous fallback matches stay untouched. Overlapping exact setup matches are rejected. Enumeration order and names do not affect matching. Scaling that changes logical dimensions creates a new layout. Missing or duplicate identities do not match. UUID stability ultimately depends on macOS and the display or adapter. A new identity is treated as an unsaved layout.
 
 Setup data lives at `~/Library/Application Support/HighDock/setups.json`. Writes are atomic. Unsupported or corrupt files are kept unchanged and block saving until repaired. Pause and first-launch flags use the app's user defaults.
 

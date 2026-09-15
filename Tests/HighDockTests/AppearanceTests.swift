@@ -27,7 +27,21 @@ func renderAppearanceChecks() async throws {
     try store.save([Setup(name: "Studio", layout: layout, settings: DockSettings(edge: .left, autoHide: true))])
     let model = AppModel(store: store, dock: PreviewDock(), displayReader: { layout }, settleDuration: .milliseconds(1), preferences: UserDefaults(suiteName: "HighDockPreview")!, observeSystem: false)
     try await Task.sleep(for: .milliseconds(100))
-    for variant in ["light", "dark", "contrast", "compact", "disabled-light", "disabled-dark", "disabled-contrast"] {
+    for variant in ["light", "dark", "contrast", "compact", "disabled-light", "disabled-dark", "disabled-contrast", "reconnected-office"] {
+        if variant == "reconnected-office" {
+            let office = DisplayLayout(displays: [
+                Display(id: "left", name: "U32J59x (2)", x: 0, y: 0, width: 3008, height: 1692, primary: true),
+                Display(id: "laptop", name: "Built-in Retina Display", x: 2188, y: 1692, width: 1512, height: 982),
+                Display(id: "right", name: "U32J59x (1)", x: 3008, y: 0, width: 3008, height: 1692)
+            ])
+            let setup = Setup(name: "Work Office", layout: office, settings: DockSettings(edge: .left, mainDisplayID: "left"))
+            model.setups = [setup]
+            model.layout = try #require(office.makingPrimary("laptop"))
+            model.selectedID = model.activeSetup?.id
+            await model.loadDraft()
+            #expect(model.activeSetup?.id == setup.id)
+            #expect(model.editingCurrent)
+        }
         model.draftSettings.autoHide = !variant.hasPrefix("disabled-")
         let size = variant == "compact" ? NSSize(width: 740, height: 680) : NSSize(width: 860, height: 700)
         if variant == "compact" {
