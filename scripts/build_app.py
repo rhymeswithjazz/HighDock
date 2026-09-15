@@ -15,15 +15,17 @@ def build_app(destination, *, version=None, build=None, universal=False, updates
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     architectures = ["arm64", "x86_64"] if universal else [None]
-    binaries = []
-    for architecture in architectures:
-        arguments = ["swift", "build", "-c", "release", "--disable-sandbox", "--force-resolved-versions", "--product", "HighDock"]
-        if architecture:
-            arguments += ["--arch", architecture]
-        run(*arguments, log=log)
-        directory = Path(run(*arguments, "--show-bin-path", capture=True))
-        binaries.append(directory / "HighDock")
     with tempfile.TemporaryDirectory(prefix="highdock-bundle-", dir=destination.parent) as staging:
+        binaries = []
+        for architecture in architectures:
+            arguments = ["swift", "build", "-c", "release", "--disable-sandbox", "--force-resolved-versions", "--product", "HighDock"]
+            if architecture:
+                arguments += ["--arch", architecture]
+            run(*arguments, log=log)
+            directory = Path(run(*arguments, "--show-bin-path", capture=True))
+            binary = Path(staging) / f"HighDock-{architecture or 'native'}"
+            shutil.copy2(directory / "HighDock", binary)
+            binaries.append(binary)
         app = Path(staging) / "HighDock.app"
         macos = app / "Contents/MacOS"
         resources = app / "Contents/Resources"
